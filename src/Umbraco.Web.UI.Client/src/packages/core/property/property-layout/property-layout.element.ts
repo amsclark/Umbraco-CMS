@@ -68,6 +68,15 @@ export class UmbPropertyLayoutElement extends UmbLitElement {
 	@property({ type: Boolean, reflect: true })
 	public mandatory?: boolean;
 
+	/**
+	 * @description Hide the validation message.
+	 * @type {boolean}
+	 * @attr hide-validation-message
+	 * @default false
+	 */
+	@property({ type: Boolean, attribute: 'hide-validation-message' })
+	public hideValidationMessage = false;
+
 	override render() {
 		// TODO: Only show alias on label if user has access to DocumentType within settings:
 		return html`
@@ -81,9 +90,13 @@ export class UmbPropertyLayoutElement extends UmbLitElement {
 				<slot name="description"></slot>
 			</div>
 			<div id="editorColumn">
-				<umb-form-validation-message>
-					<slot name="editor"></slot>
-				</umb-form-validation-message>
+				${this.hideValidationMessage
+					? html`<slot name="editor"></slot>`
+					: html`
+							<umb-form-validation-message>
+								<slot name="editor"></slot>
+							</umb-form-validation-message>
+						`}
 			</div>
 		`;
 	}
