@@ -6,14 +6,12 @@ import type {
 } from './link-picker-modal.token.js';
 import { css, customElement, html, nothing, query, state, when } from '@umbraco-cms/backoffice/external/lit';
 import { isUmbracoFolder, UmbMediaTypeStructureRepository } from '@umbraco-cms/backoffice/media-type';
-import { umbFocus } from '@umbraco-cms/backoffice/lit-element';
 import { UmbDocumentDetailRepository } from '@umbraco-cms/backoffice/document';
 import { UmbMediaDetailRepository } from '@umbraco-cms/backoffice/media';
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal';
 import type { UmbInputDocumentElement } from '@umbraco-cms/backoffice/document';
 import type { UmbInputMediaElement } from '@umbraco-cms/backoffice/media';
-import type { UUIBooleanInputEvent, UUIInputElement, UUIInputEvent } from '@umbraco-cms/backoffice/external/uui';
-import { umbBindToValidation, UmbValidationContext } from '@umbraco-cms/backoffice/validation';
+import type { UUIBooleanInputEvent, UUIInputEvent } from '@umbraco-cms/backoffice/external/uui';
 
 type UmbInputPickerEvent = CustomEvent & { target: { value?: string } };
 
@@ -34,11 +32,6 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 	@query('umb-input-media')
 	private _mediaPickerElement?: UmbInputMediaElement;
 
-	#validationContext = new UmbValidationContext(this);
-
-	@query('#linkUrl', true)
-	private _linkUrlInput?: UUIInputElement;
-
 	override async firstUpdated() {
 		if (this.data?.config) {
 			this._config = this.data.config;
@@ -49,17 +42,10 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 		const { data: mediaTypes } = await mediaTypeStructureRepository.requestAllowedChildrenOf(null);
 		this._allowedMediaTypeUniques =
 			(mediaTypes?.items.map((x) => x.unique).filter((x) => x && !isUmbracoFolder(x)) as Array<string>) ?? [];
-
-		this._linkUrlInput?.addValidator(
-			'valueMissing',
-			() => 'Please enter a either a URL or a anchor / querystring or select a document or media item',
-			() => !this.value.link.url && !this.value.link.queryString,
-		);
 	}
 
 	#partialUpdateLink(linkObject: Partial<UmbLinkPickerLink>) {
 		this.modalContext?.updateValue({ link: { ...this.value.link, ...linkObject } });
-		this.#validationContext.validate();
 	}
 
 	#onLinkAnchorInput(event: UUIInputEvent) {
@@ -151,25 +137,32 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 		this._mediaPickerElement?.shadowRoot?.querySelector('#btn-add')?.dispatchEvent(new Event('click'));
 	}
 
-	async #onSubmit() {
-		await this.#validationContext.validate();
-		this.modalContext?.submit();
-	}
-
 	override render() {
+		const isDisabled = !this.value.link.url && !this.value.link.queryString;
 		return html`
 			<umb-body-layout headline=${this.localize.term('defaultdialogs_selectLink')}>
-				<uui-box>
-					${this.#renderLinkUrlInput()} ${this.#renderLinkTitleInput()} ${this.#renderLinkTargetInput()}
-					${this.#renderInternals()}
-				</uui-box>
+				<uui-box> ${this.#renderInternals()} ${this.#renderLinkUrlInput()} </uui-box>
+				${!isDisabled
+					? html`
+							<uui-box headline="Attributes">
+								${this.#renderLinkTitleInput()} ${this.#renderLinkTargetInput()}
+							</uui-box>
+						`
+					: nothing}
 				<div slot="actions">
 					<uui-button label=${this.localize.term('general_close')} @click=${this._rejectModal}></uui-button>
 					<uui-button
 						color="positive"
 						look="primary"
 						label=${this.localize.term('general_submit')}
-						@click=${this.#onSubmit}></uui-button>
+						?disabled=${isDisabled}
+						.title=${isDisabled
+							? this.localize.term('You must select a document, media, or type in a url or querystring')
+							: ''}
+						@click=${this._submitModal}>
+						<umb-localize key="general_submit">Submit</umb-localize>
+						${isDisabled ? html`<uui-icon name="wrong"></uui-icon>` : nothing}
+					</uui-button>
 				</div>
 			</umb-body-layout>
 		`;
@@ -191,9 +184,7 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 								label=${this.localize.term('general_url')}
 								.value=${this.value.link.url ?? ''}
 								?disabled=${this.value.link.unique ? true : false}
-								@change=${this.#onLinkUrlInput}
-								${umbBindToValidation(this)}
-								${umbFocus()}>
+								@change=${this.#onLinkUrlInput}>
 							</uui-input>
 						</umb-property-layout>
 						${when(
@@ -209,7 +200,6 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 										placeholder=${this.localize.term('placeholders_anchor')}
 										label=${this.localize.term('placeholders_anchor')}
 										@change=${this.#onLinkAnchorInput}
-										${umbBindToValidation(this)}
 										.value=${this.value.link.queryString ?? ''}></uui-input>
 								</umb-property-layout>
 							`,
@@ -292,6 +282,10 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 				--uui-box-default-padding: 0 var(--uui-size-space-5);
 			}
 
+			uui-box:not(:first-of-type) {
+				margin-top: var(--uui-size-space-5);
+			}
+
 			uui-button-group {
 				width: 100%;
 			}
@@ -300,15 +294,11 @@ export class UmbLinkPickerModalElement extends UmbModalBaseElement<UmbLinkPicker
 				width: 100%;
 			}
 
-			#linkUrlAnchor {
-				border-bottom: 1px solid var(--uui-color-divider);
-				padding: var(--uui-size-layout-1) 0;
-			}
-
 			.side-by-side {
 				display: flex;
 				flex-wrap: wrap;
 				gap: var(--uui-size-space-5);
+				padding: var(--uui-size-space-5) 0;
 
 				umb-property-layout {
 					flex: 1 1 0px;
